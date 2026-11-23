@@ -123,4 +123,10 @@ namespace sc::s3 {
         if (algorithm == checksum::none) return {};
         return sc::base64::encode(raw_checksum_of(algorithm, data));
     }
+
+    std::string composite_checksum(const checksum algorithm, const std::vector<std::string> &parts) {
+        std::string joined;
+        for (const auto &part: parts) joined += part;
+        return checksum_of(algorithm, joined);
+    }
 }

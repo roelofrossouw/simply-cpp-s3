@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace sc::s3 {
     /// The checksums S3 keeps with an object, sent as x-amz-checksum-<name> (base64, the bytes in
@@ -53,4 +54,7 @@ namespace sc::s3 {
     [[nodiscard]] std::string checksum_of(checksum algorithm, std::string_view data);
     /// The raw value (4 or 32 bytes) of data; "" for none.
     [[nodiscard]] std::string raw_checksum_of(checksum algorithm, std::string_view data);
+    /// A multipart upload's checksum as S3 computes it: the checksum of the parts' raw checksums one after the
+    /// other, in base64 ("...=="; S3 shows it with "-<parts>" after it). parts: each part's raw checksum.
+    [[nodiscard]] std::string composite_checksum(checksum algorithm, const std::vector<std::string> &parts);
 }

@@ -200,6 +200,35 @@ int main() {
         CHECK_EQ(page.next_token, std::string{"1ueGcxLPRx1Tr/XYExHnhbYLgveDs2J/wm36Hy4vbOwM="});
     }
 
+    SECTION("GetObjectAttributes");
+    {
+        bool truncated = true;
+        int next = 0;
+        const auto attributes = object_attributes::parse(R"(<GetObjectAttributesResponse xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+<ETag>"abc-3"</ETag><Checksum><ChecksumCRC32>LAQfEg==-3</ChecksumCRC32><ChecksumType>COMPOSITE</ChecksumType></Checksum>
+<ObjectParts><IsTruncated>false</IsTruncated><MaxParts>1000</MaxParts><NextPartNumberMarker>3</NextPartNumberMarker><PartNumberMarker>0</PartNumberMarker>
+<Part><ChecksumCRC32>AAAAAQ==</ChecksumCRC32><PartNumber>1</PartNumber><Size>5242880</Size></Part>
+<Part><ChecksumCRC32>AAAAAg==</ChecksumCRC32><PartNumber>2</PartNumber><Size>5242880</Size></Part>
+<Part><ChecksumCRC32>AAAAAw==</ChecksumCRC32><PartNumber>3</PartNumber><Size>1514240</Size></Part>
+<PartsCount>3</PartsCount></ObjectParts><StorageClass>DEEP_ARCHIVE</StorageClass><ObjectSize>12000000</ObjectSize></GetObjectAttributesResponse>)",
+                                                         &truncated, &next);
+        CHECK(!truncated);
+        CHECK_EQ(next, 3);
+        CHECK_EQ(attributes.etag, std::string{"abc-3"});
+        CHECK(attributes.size == bytes{12000000});
+        CHECK(attributes.kind == storage_class::deep_archive);
+        CHECK_EQ(attributes.checksums.at(checksum::crc32), std::string{"LAQfEg=="}); // without "-3"
+        CHECK_EQ(attributes.parts_count, 3);
+        CHECK_EQ(attributes.parts.size(), std::size_t{3});
+        CHECK_EQ(attributes.parts[1].checksums.at(checksum::crc32), std::string{"AAAAAg=="});
+        CHECK((attributes.part_range(1) == std::pair<std::uint64_t, std::uint64_t>{0, 5242879}));
+        CHECK((attributes.part_range(3) == std::pair<std::uint64_t, std::uint64_t>{10485760, 11999999}));
+        CHECK_THROWS_AS((void)attributes.part_range(4), std::invalid_argument);
+        // A composite of the raw part checksums 00000001 00000002 00000003.
+        CHECK_EQ(composite_checksum(checksum::crc32, {std::string("\0\0\0\1", 4), std::string("\0\0\0\2", 4), std::string("\0\0\0\3", 4)}),
+                 crc{checksum::crc32}.update(std::string("\0\0\0\1\0\0\0\2\0\0\0\3", 12)).base64());
+    }
+
     SECTION("AssumeRole's answer");
     {
         const auto key = parse_assume_role(R"(<AssumeRoleResponse xmlns="https://sts.amazonaws.com/doc/2011-06-15/"><AssumeRoleResult>

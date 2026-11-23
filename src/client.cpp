@@ -630,6 +630,76 @@ namespace sc::s3 {
         }
     }
 
+    object_attributes object_attributes::parse(const std::string_view document, bool *truncated, int *next_part_marker) {
+        const auto root = xml::parse(document);
+        object_attributes out;
+        out.etag = root.value("ETag");
+        std::erase(out.etag, '"');
+        if (const auto size = root.value("ObjectSize"); !size.empty()) out.size = bytes{std::stoull(size)};
+        if (const auto kind = root.value("StorageClass"); !kind.empty()) {
+            try {
+                out.kind = storage_class_from(kind);
+            } catch (const std::invalid_argument &) {
+            }
+        }
+        const auto read_checksums = [](const xml::element &from, std::map<checksum, std::string> &into) {
+            for (const auto algorithm: {checksum::crc32, checksum::crc32c, checksum::sha256}) {
+                auto value = from.value(checksum_element(algorithm));
+                if (const auto dash = value.find('-'); dash != std::string::npos) value.resize(dash); // "...==-3"
+                if (!value.empty()) into[algorithm] = value;
+            }
+        };
+        if (const auto *sums = root.child("Checksum")) read_checksums(*sums, out.checksums);
+        if (const auto *parts = root.child("ObjectParts")) {
+            if (const auto count = parts->value("PartsCount"); !count.empty()) out.parts_count = std::stoi(count);
+            for (const auto *each: parts->all("Part")) {
+                object_attributes::part part;
+                part.number = std::stoi(each->value("PartNumber", "0"));
+                part.size = bytes{std::stoull(each->value("Size", "0"))};
+                read_checksums(*each, part.checksums);
+                out.parts.push_back(std::move(part));
+            }
+            if (truncated) *truncated = lower(parts->value("IsTruncated")) == "true";
+            if (next_part_marker) *next_part_marker = std::stoi(parts->value("NextPartNumberMarker", "0"));
+        } else if (truncated) {
+            *truncated = false;
+        }
+        return out;
+    }
+
+    std::pair<std::uint64_t, std::uint64_t> object_attributes::part_range(const int number) const {
+        std::uint64_t first = 0;
+        for (const auto &each: parts) {
+            if (each.number == number) {
+                if (each.size.count() == 0) throw std::invalid_argument("part " + std::to_string(number) + " is empty");
+                return {first, first + each.size.count() - 1};
+            }
+            first += each.size.count();
+        }
+        throw std::invalid_argument("no part " + std::to_string(number));
+    }
+
+    std::optional<object_attributes> client::attributes(const std::string &bucket, const std::string &key) {
+        std::optional<object_attributes> all;
+        int marker = 0;
+        for (;;) {
+            call request{"GET", bucket, key, {{"attributes", ""}}};
+            request.headers.emplace_back("x-amz-object-attributes", "ETag,Checksum,ObjectParts,StorageClass,ObjectSize");
+            request.headers.emplace_back("x-amz-max-parts", "1000");
+            if (marker > 0) request.headers.emplace_back("x-amz-part-number-marker", std::to_string(marker));
+            const auto response = state_->send(request, "GetObjectAttributes " + bucket + '/' + key);
+            if (response.status == 404) return std::nullopt;
+            state::check(response);
+            bool truncated = false;
+            int next = 0;
+            auto page = object_attributes::parse(response.body, &truncated, &next);
+            if (!all) all = std::move(page);
+            else all->parts.insert(all->parts.end(), page.parts.begin(), page.parts.end());
+            if (!truncated || next <= marker) return all;
+            marker = next;
+        }
+    }
+
     void client::remove(const std::string &bucket, const std::string &key) {
         const auto response = state_->send({"DELETE", bucket, key}, "DELETE " + bucket + '/' + key);
         if (response.status == 404) return;

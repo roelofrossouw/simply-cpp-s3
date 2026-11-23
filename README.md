@@ -13,6 +13,8 @@ from the program itself, without the AWS CLI. C++20 on libcurl and OpenSSL's lib
 - **Reading**: streamed GET (going on from where it broke off, for the same ETag), ranges, HEAD with metadata,
   checksums and restore status, ListObjectsV2 with paging and folders.
 - **Archives**: RestoreObject (days, Bulk/Standard/Expedited) and its progress from HEAD.
+- **Checking a copy**: GetObjectAttributes gives each part's size and checksum (also for archived objects), so a
+  restore test can read single parts by range and check them, and `composite_checksum()` rebuilds the object's checksum.
 - **Credentials** from a settings file and its `.d/` drop-ins, the `AWS_*` variables, or **STS AssumeRole**
   (short-lived credentials narrowed by a session policy, for handing one job upload-only access).
 - **A rate limit** each way, so a backup leaves room on a shared link.

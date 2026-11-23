@@ -138,6 +138,24 @@ int main() {
         CHECK_EQ(back.size(), static_cast<std::size_t>(MiB(12).count() + 12345));
         CHECK(back == pattern(MiB(12).count() + 12345));
 
+        // GetObjectAttributes: each part's checksum is what a ranged read of it gives, and the parts' composite is the
+        // object's checksum as the upload reported it.
+        const auto attributes = s3.attributes(bucket, prefix + "big.bin");
+        CHECK(attributes.has_value());
+        if (attributes) {
+            CHECK_EQ(attributes->parts.size(), std::size_t{3});
+            CHECK(attributes->size == bytes{MiB(12).count() + 12345});
+            std::vector<std::string> raw;
+            for (const auto &part: attributes->parts) {
+                std::string data;
+                s3.get(bucket, prefix + "big.bin", [&](const std::string_view piece) { data += piece; }, {.range = attributes->part_range(part.number)});
+                CHECK_EQ(crc{checksum::crc32}.update(data).base64(), part.checksums.at(checksum::crc32));
+                raw.push_back(crc{checksum::crc32}.update(data).bytes());
+            }
+            CHECK_EQ(composite_checksum(checksum::crc32, raw) + "-3", stored.checksum);
+        }
+        CHECK(!s3.attributes(bucket, prefix + "no such object"));
+
         pattern_buffer small{1000, false};
         std::istream short_in{&small};
         const auto single = s3.upload(bucket, prefix + "small.bin", short_in, upload);

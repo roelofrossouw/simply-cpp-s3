@@ -197,6 +197,31 @@ namespace sc::s3 {
         bool checksums = false;
     };
 
+    /// GetObjectAttributes' answer: the object's size, ETag, storage class and checksum, and for an object
+    /// uploaded in parts each part's number, size and checksum (what S3 checked when the part arrived).
+    struct object_attributes {
+        struct part {
+            int number = 0;
+            bytes size;
+            /// The part's checksum in base64, by algorithm (the one the upload used).
+            std::map<checksum, std::string> checksums;
+        };
+        std::string etag;
+        bytes size;
+        storage_class kind = storage_class::standard;
+        /// The object's checksum in base64 ("...==" for a single PUT; of the parts' checksums, without S3's
+        /// "-<parts>" suffix, for a multipart upload), by algorithm.
+        std::map<checksum, std::string> checksums;
+        /// Empty for an object stored in one PUT.
+        std::vector<part> parts;
+        int parts_count = 0;
+
+        /// Reads GetObjectAttributes' XML (one page of parts).
+        static object_attributes parse(std::string_view xml, bool *truncated = nullptr, int *next_part_marker = nullptr);
+        /// The bytes [first, last] the part covers in the object (parts are numbered from 1, in order).
+        [[nodiscard]] std::pair<std::uint64_t, std::uint64_t> part_range(int number) const;
+    };
+
     /// What a restore request did.
     enum class restore_result {
         /// Started (202): the copy is there in hours (see restore_tier).
@@ -258,6 +283,10 @@ namespace sc::s3 {
         /// The same, handing each piece to sink.
         object_info get(const std::string &bucket, const std::string &key, const std::function<void(std::string_view)> &sink,
                         const get_options &options = {});
+
+        /// The object's attributes and, for a multipart upload, every part's size and checksum
+        /// (GetObjectAttributes, all pages); nullopt when there's no such object. Works on archived objects too.
+        std::optional<object_attributes> attributes(const std::string &bucket, const std::string &key);
 
         /// Deletes the object; deleting one that isn't there isn't an error (S3's way).
         void remove(const std::string &bucket, const std::string &key);
