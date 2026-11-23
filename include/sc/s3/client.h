@@ -170,6 +170,11 @@ namespace sc::s3 {
         /// Asked before each part and before completing: true stops the upload. It's aborted (its parts
         /// deleted) and upload() throws sc::s3::error with code "Stopped". For a signal handler's flag.
         std::function<bool()> stop;
+        /// Asked once the stream has ended, before the object is stored (the single PUT, or completing the
+        /// multipart upload): false and nothing is stored (the upload aborted), upload() throws sc::s3::error with
+        /// code "NotConfirmed". For a producer that may fail part way (pg_basebackup | ...): its exit status, so a
+        /// truncated stream never becomes an object.
+        std::function<bool()> confirm;
     };
 
     /// A finished upload.

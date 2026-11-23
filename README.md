@@ -56,7 +56,9 @@ Settings come from `--config` (default `/etc/sc-s3/sc-s3.conf` when it's there, 
 options. `--role-arn` assumes a role first. It exits 1 when S3 refuses, 2 for wrong use.
 `put --json` prints the result as one line of JSON (bucket, key, size, parts, etag, checksum, seconds) for scripts. On
 SIGINT, SIGTERM, SIGHUP or SIGPIPE (its caller gone) an upload stops before its next part and is aborted, so no parts
-are left to be billed.
+are left to be billed. `put --commit-if FILE` stores the object only if FILE holds 0 once the input has ended, so a
+producer that fails part way never leaves a truncated object: `{ pg_basebackup -Ft -D - | zstd; echo $? > status; } | sc-s3
+put s3://... --commit-if status`.
 
 ```ini
 # /etc/sc-s3/sc-s3.conf (chmod 600 when it holds a key)

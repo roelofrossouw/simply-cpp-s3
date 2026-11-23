@@ -167,6 +167,27 @@ int main() {
         CHECK(!s3.head(bucket, prefix + "broken.bin"));
     }
 
+    SECTION("confirm: a source that failed stores nothing");
+    {
+        upload_options refuse;
+        refuse.part_size = MiB(5);
+        refuse.confirm = [] { return false; };
+        for (const auto length: {std::uint64_t{1000}, MiB(11).count()}) {
+            pattern_buffer source{length, false};
+            std::istream in{&source};
+            const auto key = prefix + "unconfirmed-" + std::to_string(length);
+            std::string code;
+            try {
+                s3.upload(bucket, key, in, refuse);
+            } catch (const error &failure) {
+                code = failure.code();
+            }
+            CHECK_EQ(code, std::string{"NotConfirmed"});
+            CHECK(!s3.head(bucket, key));
+        }
+        CHECK(s3.pending_uploads(bucket, prefix).empty());
+    }
+
     SECTION("listing: pages and folders");
     {
         for (int i = 0; i < 5; ++i) s3.put(bucket, prefix + "list/" + std::to_string(i), "x");

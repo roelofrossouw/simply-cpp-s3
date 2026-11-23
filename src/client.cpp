@@ -432,8 +432,13 @@ namespace sc::s3 {
         const auto started = std::chrono::steady_clock::now();
         const bytes base = first_part_size(options.part_size, options.expected_size);
         std::string current = read_part(in, part_size_for(1, base));
+        const auto confirmed = [&] {
+            if (options.confirm && !options.confirm())
+                throw error(0, "NotConfirmed", "the data's source said it failed: nothing was stored (a truncated stream isn't kept)");
+        };
         // It fits in one part: a plain PUT.
         if (current.size() < part_size_for(1, base).count() || in.peek() == std::char_traits<char>::eof()) {
+            confirmed();
             auto result = put(bucket, key, current, options);
             if (options.on_progress) options.on_progress({1, result.size, std::chrono::steady_clock::now() - started});
             return result;
@@ -490,6 +495,7 @@ namespace sc::s3 {
             }
 
             stopping();
+            confirmed();
             std::string body = "<CompleteMultipartUpload xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">";
             for (const auto &stored: parts) {
                 body += "<Part><PartNumber>" + std::to_string(stored.number) + "</PartNumber><ETag>" + xml::escape(stored.etag) + "</ETag>";

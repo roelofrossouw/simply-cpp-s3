@@ -14,6 +14,7 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <thread>
 
 namespace {
     // Set by SIGINT, SIGTERM, SIGHUP and SIGPIPE (the caller's ssh gone: progress can't be written): an upload
@@ -97,7 +98,9 @@ int main(int argc, char **argv) {
             {"role-arn", {{"value", "ARN"}, {"help", "assume this role (STS) first and use its temporary credentials"}}},
             {"session-name", {{"value", "NAME"}, {"default", "sc-s3"}, {"help", "with --role-arn: the session's name in CloudTrail"}}},
             {"progress", {{"short", "p"}, {"type", "boolean"}, {"help", "put: report each part on standard error"}}},
-            {"json", {{"type", "boolean"}, {"help", "put: the result as one line of JSON (bucket, key, size, parts, etag, checksum, seconds)"}}}}},
+            {"json", {{"type", "boolean"}, {"help", "put: the result as one line of JSON (bucket, key, size, parts, etag, checksum, seconds)"}}},
+            {"commit-if", {{"value", "FILE"}, {"help", "put: store the object only if FILE holds 0 once the input has ended (the producer's exit status: "
+                                                        "{ producer; echo $? > FILE; } | sc-s3 put ...); else nothing is stored and it exits 1"}}}}},
         {"positional", {
             {"command", {{"help", "put, get, ls, head, restore, rm, uploads or abort"}}},
             {"url", {{"help", "s3://bucket/key"}}},
@@ -141,6 +144,20 @@ int main(int argc, char **argv) {
                 };
             }
             options.stop = [] { return stop_asked.load(); };
+            if (const auto *commit_if = args.lookup("commit-if")) {
+                // The status is written before the input ends; a moment's grace for a slow file system.
+                options.confirm = [file = commit_if->get<std::string>()] {
+                    for (int wait = 0; wait < 50; ++wait) {
+                        if (std::ifstream status{file}) {
+                            std::string text;
+                            status >> text;
+                            if (!text.empty()) return text == "0";
+                        }
+                        std::this_thread::sleep_for(std::chrono::milliseconds{100});
+                    }
+                    return false;
+                };
+            }
             if (file == "-" && isatty(STDIN_FILENO)) throw std::invalid_argument("put: nothing piped in; give FILE or pipe the data");
             const auto started = std::chrono::steady_clock::now();
             const auto stored = file == "-" ? s3.upload(bucket, key, std::cin, options) : s3.upload_file(bucket, key, file, options);
