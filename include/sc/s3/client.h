@@ -167,6 +167,9 @@ namespace sc::s3 {
         bytes expected_size{};
         /// Called after each part is stored.
         std::function<void(const upload_progress &)> on_progress;
+        /// Asked before each part and before completing: true stops the upload. It's aborted (its parts
+        /// deleted) and upload() throws sc::s3::error with code "Stopped". For a signal handler's flag.
+        std::function<bool()> stop;
     };
 
     /// A finished upload.

@@ -456,8 +456,12 @@ namespace sc::s3 {
         upload_result result;
         result.key = key;
         try {
+            const auto stopping = [&] {
+                if (options.stop && options.stop()) throw error(0, "Stopped", "the upload was stopped; its parts were deleted");
+            };
             for (int number = 1;; ++number) {
                 if (number > most_parts) throw std::runtime_error("more than 10,000 parts: start with a bigger part_size");
+                stopping();
                 // The next part is read while this one goes.
                 auto next = std::async(std::launch::async, [&in, size = part_size_for(number + 1, base)] { return read_part(in, size); });
 
@@ -485,6 +489,7 @@ namespace sc::s3 {
                 if (current.empty()) break;
             }
 
+            stopping();
             std::string body = "<CompleteMultipartUpload xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">";
             for (const auto &stored: parts) {
                 body += "<Part><PartNumber>" + std::to_string(stored.number) + "</PartNumber><ETag>" + xml::escape(stored.etag) + "</ETag>";

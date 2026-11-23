@@ -54,6 +54,9 @@ sc-s3 get s3://backups/hv/data@today | zfs receive pool/restored
 Settings come from `--config` (default `/etc/sc-s3/sc-s3.conf` when it's there, plus `sc-s3.conf.d/`), then
 `AWS_REGION`, `AWS_ENDPOINT_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN`, then the
 options. `--role-arn` assumes a role first. It exits 1 when S3 refuses, 2 for wrong use.
+`put --json` prints the result as one line of JSON (bucket, key, size, parts, etag, checksum, seconds) for scripts. On
+SIGINT, SIGTERM, SIGHUP or SIGPIPE (its caller gone) an upload stops before its next part and is aborted, so no parts
+are left to be billed.
 
 ```ini
 # /etc/sc-s3/sc-s3.conf (chmod 600 when it holds a key)

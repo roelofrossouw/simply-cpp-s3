@@ -5,6 +5,9 @@
 
 #include <unistd.h>
 
+#include <atomic>
+#include <csignal>
+
 #include <chrono>
 #include <cstdio>
 #include <fstream>
@@ -13,6 +16,26 @@
 #include <sstream>
 
 namespace {
+    // Set by SIGINT, SIGTERM, SIGHUP and SIGPIPE (the caller's ssh gone: progress can't be written): an upload
+    // stops before its next part and is aborted, so no parts are left to be billed.
+    std::atomic<bool> stop_asked{false};
+
+    void ask_stop(int) { stop_asked.store(true); }
+
+    // JSON string text: quotes, backslashes and control characters escaped.
+    std::string json_text(const std::string &text) {
+        std::string out = "\"";
+        for (const char c: text) {
+            if (c == '"' || c == '\\') out += std::string{"\\"} + c;
+            else if (static_cast<unsigned char>(c) < 0x20) {
+                char escaped[8];
+                std::snprintf(escaped, sizeof escaped, "\\u%04x", static_cast<unsigned>(c));
+                out += escaped;
+            } else out += c;
+        }
+        return out + "\"";
+    }
+
     std::string when(const std::chrono::system_clock::time_point time) {
         const std::time_t seconds = std::chrono::system_clock::to_time_t(time);
         std::tm utc{};
@@ -73,12 +96,14 @@ int main(int argc, char **argv) {
             {"upload-id", {{"value", "ID"}, {"help", "abort: the upload to abort (from uploads)"}}},
             {"role-arn", {{"value", "ARN"}, {"help", "assume this role (STS) first and use its temporary credentials"}}},
             {"session-name", {{"value", "NAME"}, {"default", "sc-s3"}, {"help", "with --role-arn: the session's name in CloudTrail"}}},
-            {"progress", {{"short", "p"}, {"type", "boolean"}, {"help", "put: report each part on standard error"}}}}},
+            {"progress", {{"short", "p"}, {"type", "boolean"}, {"help", "put: report each part on standard error"}}},
+            {"json", {{"type", "boolean"}, {"help", "put: the result as one line of JSON (bucket, key, size, parts, etag, checksum, seconds)"}}}}},
         {"positional", {
             {"command", {{"help", "put, get, ls, head, restore, rm, uploads or abort"}}},
             {"url", {{"help", "s3://bucket/key"}}},
             {"file", {{"required", false}, {"help", "put's source or get's destination (default: standard input/output)"}}}}}}};
 
+    for (const int signal: {SIGINT, SIGTERM, SIGHUP, SIGPIPE}) std::signal(signal, ask_stop);
     try {
         auto settings = sc::s3::settings::load(text(args, "config", sc::s3::settings::default_file));
         if (const auto *region = args.lookup("region")) settings.region = region->get<std::string>();
@@ -115,8 +140,17 @@ int main(int argc, char **argv) {
                               << "/s)" << std::defaultfloat << std::endl;
                 };
             }
+            options.stop = [] { return stop_asked.load(); };
             if (file == "-" && isatty(STDIN_FILENO)) throw std::invalid_argument("put: nothing piped in; give FILE or pipe the data");
+            const auto started = std::chrono::steady_clock::now();
             const auto stored = file == "-" ? s3.upload(bucket, key, std::cin, options) : s3.upload_file(bucket, key, file, options);
+            if (args.as<bool>("json")) {
+                const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+                std::cout << "{\"bucket\":" << json_text(bucket) << ",\"key\":" << json_text(key) << ",\"size\":" << stored.size.count()
+                          << ",\"parts\":" << stored.parts << ",\"etag\":" << json_text(stored.etag) << ",\"checksum\":" << json_text(stored.checksum)
+                          << ",\"seconds\":" << std::fixed << std::setprecision(1) << seconds << "}" << std::endl;
+                return 0;
+            }
             std::cout << "s3://" << bucket << '/' << key << ": " << readable(stored.size) << " (" << stored.size.count() << " bytes), " << stored.parts
                       << (stored.parts == 1 ? " part" : " parts") << ", etag " << stored.etag;
             if (!stored.checksum.empty()) std::cout << ", " << args.as<std::string>("checksum") << ' ' << stored.checksum;
