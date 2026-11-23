@@ -1,8 +1,9 @@
-// sc::s3::client against an S3-compatible server, when SC_S3_TEST_ENDPOINT names one (MinIO: http://127.0.0.1:9000)
-// with AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY for it; SC_S3_TEST_BUCKET (default sc-s3-test) is created when missing.
+// sc::s3::client against an S3-compatible server, when SC_S3_TEST_ENDPOINT names one (MinIO: http://127.0.0.1:9000), or
+// AWS itself when it is "aws" (AWS_REGION), with AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY for it; SC_S3_TEST_BUCKET (default
+// sc-s3-test) is created when there is no such bucket.
 // Every key goes under test/<pid>/ and is deleted again. Skipped (passing) without an endpoint.
 //
-// put/head/get, ranges, checksums the server checks (and refuses when wrong), listing with paging and folders,
+// put/head/get, ranges, checksums the server checks, listing with paging and folders,
 // a multipart upload from a stream of unknown length (3 parts) read back byte for byte, a stream that fails half
 // way (the upload is aborted: no pending uploads left), the rate limit, remove, errors (NoSuchKey, no bucket).
 #include <sc/s3/s3.h>
@@ -65,16 +66,18 @@ int main() {
     const std::string prefix = "test/" + std::to_string(::getpid()) + "/";
 
     auto options = settings::load({}, true);
-    options.endpoint = endpoint;
-    options.path_style = true;
+    // "aws": AWS itself in AWS_REGION (virtual-hosted names); anything else is a server's URL (path style).
+    if (std::string{endpoint} != "aws") {
+        options.endpoint = endpoint;
+        options.path_style = true;
+    }
     options.retries = 1;
     client s3{options};
-    if (!s3.head(bucket, "no-such-key-ever")) {
-        try {
-            s3.create_bucket(bucket);
-        } catch (const error &failure) {
-            if (failure.code() != "BucketAlreadyOwnedByYou" && failure.code() != "BucketAlreadyExists") throw;
-        }
+    try {
+        (void)s3.list(bucket, {.max_keys = 1});
+    } catch (const error &failure) {
+        if (failure.code() != "NoSuchBucket") throw;
+        s3.create_bucket(bucket);
     }
 
     SECTION("put, head, get");
@@ -104,7 +107,7 @@ int main() {
         CHECK(!s3.head(bucket, prefix + "nothing here"));
     }
 
-    SECTION("checksums: sha256, crc32c, and a wrong one refused");
+    SECTION("checksums: sha256, crc32c, Content-MD5");
     {
         put_options sha;
         sha.checksum = checksum::sha256;
