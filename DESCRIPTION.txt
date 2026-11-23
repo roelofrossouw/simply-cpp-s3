@@ -1,0 +1,1 @@
+S3 for simply-cpp: AWS S3 and S3-compatible storage from the program itself (SigV4, streaming multipart uploads, Glacier/Deep Archive restores, STS), no AWS CLI
