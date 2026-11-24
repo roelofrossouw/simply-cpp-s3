@@ -9,7 +9,7 @@ get_sc_version()
 message(STATUS "SimplyCPP ${SC_MODULE} Version: ${SC_VERSION}")
 
 # sc::config and sc::params; libcurl (curl license) for HTTP(S); OpenSSL's libcrypto for SHA-256, HMAC and MD5.
-find_or_install_package(sc-core simply-cpp-dev simply-cpp 3.0.0)
+find_or_install_package(sc-core simply-cpp-dev simply-cpp 4.0.0)
 find_or_install_package(CURL libcurl4-openssl-dev curl)
 find_or_install_package(OpenSSL libssl-dev openssl 3.0)
 
@@ -49,4 +49,4 @@ target_compile_definitions(sc-s3-tool PRIVATE SC_S3_VERSION="${SC_VERSION}")
 sc_program_info(sc-s3-tool)
 install(TARGETS sc-s3-tool RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT tools)
 
-package_sc_module(DEV_DEPENDS "simply-cpp-dev (>= 3.0.0~)" libcurl4-openssl-dev libssl-dev)
+package_sc_module(DEV_DEPENDS "simply-cpp-dev (>= 4.0.0~)" libcurl4-openssl-dev libssl-dev)
