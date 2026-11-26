@@ -35,4 +35,12 @@ namespace sc::s3 {
 
     /// Reads AssumeRole's answer; throws std::runtime_error when it holds no credentials.
     [[nodiscard]] credentials parse_assume_role(std::string_view xml);
+
+    /// One call to an AWS service that speaks the query protocol (STS, CloudWatch, IAM, ...; since
+    /// 2.1.0): form POSTed to url ("https://monitoring.af-south-1.amazonaws.com"), signed for
+    /// settings' region and service ("monitoring"), tried again settings.retries times when it's
+    /// worth it. Returns the answer's XML; throws error with AWS's code otherwise. what names the
+    /// call in errors ("CloudWatch GetMetricData").
+    [[nodiscard]] std::string query(const settings &settings, std::string_view service, std::string_view url, const signed_request::fields &form,
+                                    std::string_view what);
 }

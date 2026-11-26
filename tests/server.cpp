@@ -267,6 +267,16 @@ int main() {
         }
     }
 
+    SECTION("bucket_config: versioning answered, a configuration the bucket hasn't is none, another bucket's an error");
+    {
+        const auto versioning = s3.bucket_config(bucket, "versioning");
+        CHECK(versioning.has_value());
+        if (versioning) CHECK(versioning->find("VersioningConfiguration") != std::string::npos);
+        CHECK_NOTHROW((void) s3.bucket_config(bucket, "lifecycle")); // none (nullopt) or the bucket's own
+        CHECK_THROWS_AS((void) s3.bucket_config("sc-s3-no-such-bucket-" + std::to_string(::getpid()), "versioning"), sc::s3::error);
+        CHECK_THROWS_AS((void) s3.bucket_config(bucket, ""), std::invalid_argument);
+    }
+
     SECTION("remove");
     {
         std::uint64_t removed = 0;

@@ -750,6 +750,19 @@ namespace sc::s3 {
         state::check(response);
     }
 
+    std::optional<std::string> client::bucket_config(const std::string &bucket, const std::string &subresource) {
+        if (bucket.empty() || subresource.empty()) throw std::invalid_argument("bucket_config: a bucket and a subresource");
+        const auto response = state_->send({"GET", bucket, {}, {{subresource, ""}}}, "GET " + bucket + '?' + subresource);
+        if (response.status == 404) {
+            const auto refused = detail::error_from(response);
+            const auto &code = refused.code();
+            if (code != "NoSuchBucket" && (code.starts_with("NoSuch") || code.ends_with("NotFoundError"))) return std::nullopt;
+            throw refused;
+        }
+        state::check(response);
+        return response.body;
+    }
+
     void client::create_bucket(const std::string &bucket) {
         call request{"PUT", bucket};
         std::string body;

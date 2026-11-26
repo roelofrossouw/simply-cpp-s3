@@ -300,6 +300,11 @@ namespace sc::s3 {
         /// Aborts one, dropping its parts.
         void abort_upload(const std::string &bucket, const std::string &key, const std::string &upload_id);
 
+        /// A bucket's configuration by its subresource, as S3's XML ("versioning", "object-lock",
+        /// "lifecycle", "encryption", "policy", ...; since 2.1.0), or nullopt when the bucket has none
+        /// (S3's NoSuch... / ...NotFoundError). Throws error otherwise (NoSuchBucket, AccessDenied).
+        std::optional<std::string> bucket_config(const std::string &bucket, const std::string &subresource);
+
         /// Creates a bucket in the settings' region (for tests and S3-compatible servers).
         void create_bucket(const std::string &bucket);
 

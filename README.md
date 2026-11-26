@@ -17,6 +17,8 @@ from the program itself, without the AWS CLI. C++20 on libcurl and OpenSSL's lib
   restore test can read single parts by range and check them, and `composite_checksum()` rebuilds the object's checksum.
 - **Credentials** from a settings file and its `.d/` drop-ins, the `AWS_*` variables, or **STS AssumeRole**
   (short-lived credentials narrowed by a session policy, for handing one job upload-only access).
+- **Bucket settings** (`bucket_config`: versioning, object lock, lifecycle, encryption, ...) as S3's XML, and
+  `sc::s3::query()` for other AWS query-protocol services (CloudWatch's GetMetricData for bucket sizes).
 - **A rate limit** each way, so a backup leaves room on a shared link.
 - **sc-s3**, a program for scripts: `put`, `get`, `ls`, `head`, `restore`, `rm`, `uploads`, `abort`.
 
